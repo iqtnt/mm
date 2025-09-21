@@ -1,0 +1,463 @@
+import sys
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QPushButton, QListWidget, QListWidgetItem, QMessageBox, QTableWidget,
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QLabel
+)
+from PyQt6.QtGui import QIcon, QPixmap, QFont
+from PyQt6.QtCore import Qt, QSize
+from urllib.parse import urlparse, parse_qs
+import re
+import requests
+from datetime import datetime
+import webbrowser
+import os
+
+FILENAME = "youtube_links_final.txt"
+THUMB_DIR = "thumbnails"
+
+# ---------------- Helpers ----------------
+def sanitize_link(link: str) -> str:
+    link = link.strip()
+    if not link:
+        return ""
+    if link.startswith("www."):
+        link = "https://" + link
+    if link.startswith("youtu.be/") or link.startswith("youtube.com/") and not link.startswith("http"):
+        link = "https://" + link
+    if not link.startswith("http"):
+        link = "https://" + link
+    return link
+
+def get_video_id(link):
+    parsed = urlparse(link)
+    if "youtu.be" in parsed.netloc:
+        return parsed.path.lstrip("/")
+    if "youtube" in parsed.netloc:
+        qs = parse_qs(parsed.query)
+        if "v" in qs:
+            return qs["v"][0]
+    if re.match(r"^[A-Za-z0-9_-]{11}$", link):
+        return link
+    return None
+
+def download_thumbnail(video_id):
+    if not os.path.exists(THUMB_DIR):
+        os.makedirs(THUMB_DIR)
+    thumbs = ["maxresdefault.jpg","sddefault.jpg","hqdefault.jpg","mqdefault.jpg","default.jpg"]
+    local_path = os.path.join(THUMB_DIR, f"{video_id}.jpg")
+    if os.path.exists(local_path):
+        return local_path
+    for t in thumbs:
+        url = f"https://i.ytimg.com/vi/{video_id}/{t}"
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                with open(local_path, "wb") as f:
+                    f.write(r.content)
+                return local_path
+        except:
+            continue
+    return None
+
+# ---------------- Main App ----------------
+class YouTubeWatchlist(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("YouTube Watchlist")
+        self.setGeometry(100, 100, 1200, 800)
+        self.setStyleSheet("""
+            background-color: #121212; 
+            color: white;
+            font-family: Arial;
+        """)
+        self.links = []
+        self.load_links()
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+
+        # Title
+        title_label = QLabel("YouTube Watchlist")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #ff0000;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title_label)
+
+        # Link Entry Section
+        entry_widget = QWidget()
+        entry_widget.setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 10px;")
+        entry_layout = QVBoxLayout(entry_widget)
+        
+        # Title Entry
+        title_entry_layout = QHBoxLayout()
+        title_label = QLabel("Video Title:")
+        title_label.setStyleSheet("font-weight: bold;")
+        self.title_entry = QLineEdit()
+        self.title_entry.setPlaceholderText("Enter video title")
+        self.title_entry.setStyleSheet("""
+            QLineEdit {
+                background-color: #2d2d2d; 
+                color: white; 
+                border: 1px solid #444; 
+                border-radius: 4px; 
+                padding: 8px;
+            }
+        """)
+        title_entry_layout.addWidget(title_label)
+        title_entry_layout.addWidget(self.title_entry)
+        entry_layout.addLayout(title_entry_layout)
+        
+        # Link Entry
+        link_entry_layout = QHBoxLayout()
+        link_label = QLabel("YouTube Link:")
+        link_label.setStyleSheet("font-weight: bold;")
+        self.link_entry = QLineEdit()
+        self.link_entry.setPlaceholderText("Paste YouTube link here")
+        self.link_entry.setStyleSheet("""
+            QLineEdit {
+                background-color: #2d2d2d; 
+                color: white; 
+                border: 1px solid #444; 
+                border-radius: 4px; 
+                padding: 8px;
+            }
+        """)
+        link_entry_layout.addWidget(link_label)
+        link_entry_layout.addWidget(self.link_entry)
+        entry_layout.addLayout(link_entry_layout)
+        
+        main_layout.addWidget(entry_widget)
+
+        # Buttons
+        btn_widget = QWidget()
+        btn_widget.setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 10px;")
+        btn_layout = QHBoxLayout(btn_widget)
+        
+        add_btn = QPushButton("Add Video")
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50; 
+                color: white; 
+                border: none; 
+                border-radius: 4px; 
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        add_btn.clicked.connect(self.add_link)
+        
+        paste_btn = QPushButton("Paste Link")
+        paste_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6a6a6a; 
+                color: white; 
+                border: none; 
+                border-radius: 4px; 
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+        """)
+        paste_btn.clicked.connect(self.paste_clipboard)
+        
+        watch_btn = QPushButton("Watch Selected")
+        watch_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3; 
+                color: white; 
+                border: none; 
+                border-radius: 4px; 
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0b7dda;
+            }
+        """)
+        watch_btn.clicked.connect(self.watch_selected)
+        
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336; 
+                color: white; 
+                border: none; 
+                border-radius: 4px; 
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        delete_btn.clicked.connect(self.delete_selected)
+        
+        mark_btn = QPushButton("Mark as Watched")
+        mark_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FFD700; 
+                color: black; 
+                border: none; 
+                border-radius: 4px; 
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #e6c200;
+            }
+        """)
+        mark_btn.clicked.connect(self.mark_selected)
+        
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(paste_btn)
+        btn_layout.addWidget(watch_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addWidget(mark_btn)
+        main_layout.addWidget(btn_widget)
+
+        # Search
+        search_widget = QWidget()
+        search_widget.setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 10px;")
+        search_layout = QHBoxLayout(search_widget)
+        
+        search_label = QLabel("Search:")
+        search_label.setStyleSheet("font-weight: bold;")
+        self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("Search by title...")
+        self.search_entry.setStyleSheet("""
+            QLineEdit {
+                background-color: #2d2d2d; 
+                color: white; 
+                border: 1px solid #444; 
+                border-radius: 4px; 
+                padding: 8px;
+            }
+        """)
+        self.search_entry.textChanged.connect(self.refresh_list)
+        
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_entry)
+        main_layout.addWidget(search_widget)
+
+        # Table for videos
+        table_widget = QWidget()
+        table_widget.setStyleSheet("background-color: #1e1e1e; border-radius: 8px; padding: 10px;")
+        table_layout = QVBoxLayout(table_widget)
+        
+        # Create table with columns
+        self.table_widget = QTableWidget()
+        self.table_widget.setColumnCount(5)
+        self.table_widget.setHorizontalHeaderLabels(["Thumbnail", "Title", "Date Added", "Status", "Actions"])
+        self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_widget.setStyleSheet("""
+            QTableWidget {
+                background-color: #2d2d2d;
+                color: white;
+                border: 1px solid #444;
+                gridline-color: #444;
+                border-radius: 4px;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #444;
+            }
+            QTableWidget::item:selected {
+                background-color: #3d3d3d;
+            }
+            QHeaderView::section {
+                background-color: #333;
+                color: white;
+                padding: 8px;
+                border: none;
+                font-weight: bold;
+            }
+        """)
+        self.table_widget.verticalHeader().setVisible(False)
+        table_layout.addWidget(self.table_widget)
+        main_layout.addWidget(table_widget)
+
+        self.setLayout(main_layout)
+        self.refresh_list()
+
+    # ---------- Storage ----------
+    def load_links(self):
+        if os.path.exists(FILENAME):
+            with open(FILENAME, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f.readlines() if line.strip()]
+                for line in lines:
+                    parts = line.split("|")
+                    if len(parts) == 5:
+                        title, link, watched, date, thumb_file = parts
+                        self.links.append({
+                            "title": title,
+                            "link": link,
+                            "watched": watched == "1",
+                            "date": date,
+                            "thumb_file": thumb_file
+                        })
+
+    def save_links(self):
+        with open(FILENAME, "w", encoding="utf-8") as f:
+            for item in self.links:
+                f.write(f"{item['title']}|{item['link']}|{1 if item['watched'] else 0}|{item['date']}|{item['thumb_file']}\n")
+
+    # ---------- Actions ----------
+    def add_link(self):
+        title = self.title_entry.text().strip()
+        link = sanitize_link(self.link_entry.text())
+        if not link:
+            QMessageBox.warning(self, "Warning", "Please enter a link")
+            return
+        if not title:
+            vid = get_video_id(link)
+            title = f"Video {vid}" if vid else "Untitled"
+        date = datetime.now().strftime("%Y-%m-%d %H:%M")
+        vid = get_video_id(link)
+        thumb_file = download_thumbnail(vid)
+        self.links.append({
+            "title": title,
+            "link": link,
+            "watched": False,
+            "date": date,
+            "thumb_file": thumb_file
+        })
+        self.title_entry.clear()
+        self.link_entry.clear()
+        self.save_links()
+        self.refresh_list()
+
+    def paste_clipboard(self):
+        try:
+            clip = QApplication.clipboard().text()
+            if clip:
+                self.link_entry.setText(clip)
+                if not self.title_entry.text().strip():
+                    vid = get_video_id(clip)
+                    self.title_entry.setText(f"Video {vid}" if vid else "Untitled")
+        except:
+            pass
+
+    def delete_selected(self):
+        selected = self.table_widget.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "Warning", "Please select a video to delete")
+            return
+            
+        # Get unique rows from selected items
+        rows = set()
+        for item in selected:
+            rows.add(item.row())
+        
+        # Sort in reverse order to avoid index issues when deleting
+        rows = sorted(rows, reverse=True)
+        
+        for row in rows:
+            self.links.pop(row)
+            
+        self.save_links()
+        self.refresh_list()
+
+    def mark_selected(self):
+        selected = self.table_widget.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "Warning", "Please select a video to mark")
+            return
+            
+        # Get unique rows from selected items
+        rows = set()
+        for item in selected:
+            rows.add(item.row())
+        
+        for row in rows:
+            self.links[row]["watched"] = True
+            
+        self.save_links()
+        self.refresh_list()
+
+    def watch_selected(self):
+        selected = self.table_widget.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "Warning", "Please select a video to watch")
+            return
+            
+        # Get unique rows from selected items
+        rows = set()
+        for item in selected:
+            rows.add(item.row())
+        
+        for row in rows:
+            webbrowser.open(self.links[row]["link"])
+
+    def refresh_list(self):
+        query = self.search_entry.text().lower()
+        self.table_widget.setRowCount(0)
+        
+        for idx, item in enumerate(self.links):
+            if query in item["title"].lower():
+                row = self.table_widget.rowCount()
+                self.table_widget.insertRow(row)
+                
+                # Thumbnail column
+                thumbnail_item = QTableWidgetItem()
+                if item.get("thumb_file") and os.path.exists(item["thumb_file"]):
+                    pixmap = QPixmap(item["thumb_file"])
+                    pixmap = pixmap.scaled(120, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    thumbnail_item.setData(Qt.ItemDataRole.DecorationRole, pixmap)
+                thumbnail_item.setFlags(thumbnail_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table_widget.setItem(row, 0, thumbnail_item)
+                
+                # Title column
+                title_item = QTableWidgetItem(item["title"])
+                title_item.setFlags(title_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table_widget.setItem(row, 1, title_item)
+                
+                # Date column
+                date_item = QTableWidgetItem(item["date"])
+                date_item.setFlags(date_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table_widget.setItem(row, 2, date_item)
+                
+                # Status column
+                status_item = QTableWidgetItem("🏆 Watched" if item["watched"] else "❌ Not watched")
+                status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.table_widget.setItem(row, 3, status_item)
+                
+                # Actions column
+                action_item = QTableWidgetItem("Open in Browser")
+                action_item.setFlags(action_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                action_item.setData(Qt.ItemDataRole.UserRole, item["link"])  # Store link for opening
+                self.table_widget.setItem(row, 4, action_item)
+                
+                # Set row height to accommodate thumbnail
+                self.table_widget.setRowHeight(row, 100)
+        
+        # Connect double-click event to open video
+        self.table_widget.cellDoubleClicked.connect(self.on_cell_double_clicked)
+    
+    def on_cell_double_clicked(self, row, column):
+        if column == 4:  # Actions column
+            link = self.table_widget.item(row, column).data(Qt.ItemDataRole.UserRole)
+            webbrowser.open(link)
+        else:
+            # Open video when double-clicking any other cell in the row
+            link = self.links[row]["link"]
+            webbrowser.open(link)
+
+# ---------------- Run ----------------
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = YouTubeWatchlist()
+    window.show()
+    sys.exit(app.exec())
