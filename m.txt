@@ -158,7 +158,7 @@ def refresh_tree(query=""):
         if query in item[0].lower():
             filtered.append((idx, item))
     for idx, (title, link, watched, date, thumb) in filtered:
-        tree.insert("", tk.END, values=(title, link, date, format_status(watched)), image=thumb, tags=(str(idx),))
+        tree.insert("", tk.END, text="", image=thumb, values=(title, link, date, format_status(watched)), tags=(str(idx),))
         if thumb:
             images.append(thumb)  # حفاظ على الصورة في الذاكرة
 
@@ -218,7 +218,9 @@ search_entry.pack()
 
 # ---------------- Treeview ----------------
 columns=("Title","Link","Date","Status")
-tree=ttk.Treeview(root,columns=columns,show="headings",height=18)
+tree=ttk.Treeview(root,columns=columns,show="tree headings",height=18)
+tree.heading("#0", text="Thumbnail")  # العمود الأول للصورة
+tree.column("#0", width=130)
 for col in columns:
     tree.heading(col,text=col)
 tree.column("Title",width=250)
