@@ -81,7 +81,7 @@ def load_links():
 
 def save_links():
     with open(FILENAME, "w", encoding="utf-8") as f:
-        for title, link, watched, date, _ in links:  # تجاهل الصورة عند الحفظ
+        for title, link, watched, date, _ in links:
             f.write(f"{title}|{link}|{1 if watched else 0}|{date}\n")
 
 # ---------------- actions ----------------
@@ -165,9 +165,10 @@ def refresh_tree(query=""):
 # ---------------- GUI ----------------
 root = tk.Tk()
 root.title("YouTube Watchlist")
-root.geometry("900x600")
+root.geometry("950x600")
 root.resizable(False, False)
 
+# ألوان الوضع الداكن
 bg_color="#121212"
 fg_color="#ffffff"
 entry_bg="#1e1e1e"
@@ -184,13 +185,13 @@ images=[]
 title_frame=tk.Frame(root,bg=bg_color)
 title_frame.pack(pady=5)
 tk.Label(title_frame,text="Title",bg=bg_color,fg=fg_color).pack()
-title_entry=tk.Entry(title_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
+title_entry=tk.Entry(title_frame,width=60,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 title_entry.pack()
 
 link_frame=tk.Frame(root,bg=bg_color)
 link_frame.pack(pady=5)
 tk.Label(link_frame,text="YouTube Link",bg=bg_color,fg=fg_color).pack()
-link_entry=tk.Entry(link_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
+link_entry=tk.Entry(link_frame,width=60,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 link_entry.pack()
 link_entry.bind("<Control-v>", paste_link)
 link_entry.bind("<Control-V>", paste_link)
@@ -212,7 +213,7 @@ search_frame.pack(pady=5)
 search_var=tk.StringVar()
 search_var.trace("w", search_links)
 tk.Label(search_frame,text="Search by Title",bg=bg_color,fg=fg_color).pack()
-search_entry=tk.Entry(search_frame,textvariable=search_var,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
+search_entry=tk.Entry(search_frame,textvariable=search_var,width=60,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 search_entry.pack()
 
 # ---------------- Treeview ----------------
@@ -221,7 +222,7 @@ tree=ttk.Treeview(root,columns=columns,show="headings",height=18)
 for col in columns:
     tree.heading(col,text=col)
 tree.column("Title",width=250)
-tree.column("Link",width=300)
+tree.column("Link",width=350)
 tree.column("Date",width=130)
 tree.column("Status",width=100)
 tree.pack(fill=tk.BOTH,expand=True,pady=10)
