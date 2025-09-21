@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import webbrowser
 from urllib.parse import urlparse, parse_qs
 import re
 import requests
@@ -65,22 +66,22 @@ def load_links():
                 parts = line.split("|")
                 if len(parts) == 4:
                     title, link, watched, date = parts
-                    data.append([title, link, watched=="1", date])
+                    data.append([title, link, watched=="1", date, None])
                 elif len(parts)==2:
                     title, link = parts
                     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    data.append([title, link, False, date])
+                    data.append([title, link, False, date, None])
                 else:
                     link = line.strip()
                     title = extract_short_title_from_url(link)
                     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    data.append([title, link, False, date])
+                    data.append([title, link, False, date, None])
             return data
     return []
 
 def save_links():
     with open(FILENAME, "w", encoding="utf-8") as f:
-        for title, link, watched, date in links:
+        for title, link, watched, date, _ in links:  # تجاهل الصورة عند الحفظ
             f.write(f"{title}|{link}|{1 if watched else 0}|{date}\n")
 
 # ---------------- actions ----------------
@@ -158,15 +159,15 @@ def refresh_tree(query=""):
             filtered.append((idx, item))
     for idx, (title, link, watched, date, thumb) in filtered:
         tree.insert("", tk.END, values=(title, link, date, format_status(watched)), image=thumb, tags=(str(idx),))
-        # نخزن الصورة عشان Tkinter ما يمسحها
         if thumb:
-            images.append(thumb)
+            images.append(thumb)  # حفاظ على الصورة في الذاكرة
 
 # ---------------- GUI ----------------
 root = tk.Tk()
 root.title("YouTube Watchlist")
 root.geometry("900x600")
 root.resizable(False, False)
+
 bg_color="#121212"
 fg_color="#ffffff"
 entry_bg="#1e1e1e"
@@ -179,13 +180,16 @@ root.configure(bg=bg_color)
 
 images=[]
 
-# الحقول
+# ---------------- الحقول ----------------
 title_frame=tk.Frame(root,bg=bg_color)
 title_frame.pack(pady=5)
+tk.Label(title_frame,text="Title",bg=bg_color,fg=fg_color).pack()
 title_entry=tk.Entry(title_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 title_entry.pack()
+
 link_frame=tk.Frame(root,bg=bg_color)
 link_frame.pack(pady=5)
+tk.Label(link_frame,text="YouTube Link",bg=bg_color,fg=fg_color).pack()
 link_entry=tk.Entry(link_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 link_entry.pack()
 link_entry.bind("<Control-v>", paste_link)
@@ -193,7 +197,7 @@ link_entry.bind("<Control-V>", paste_link)
 title_entry.bind("<Control-v>", paste_link)
 title_entry.bind("<Control-V>", paste_link)
 
-# أزرار
+# ---------------- الأزرار ----------------
 btn_frame=tk.Frame(root,bg=bg_color)
 btn_frame.pack(pady=10)
 tk.Button(btn_frame,text="Add",bg=btn_green,fg="white",width=12,command=add_link).pack(side=tk.LEFT,padx=5)
@@ -202,17 +206,16 @@ tk.Button(btn_frame,text="Watch",bg=btn_blue,fg="white",width=12,command=open_se
 tk.Button(btn_frame,text="Delete",bg=btn_red,fg="white",width=12,command=delete_selected).pack(side=tk.LEFT,padx=5)
 tk.Button(btn_frame,text="Mark as Watched",bg=btn_gold,fg="black",width=15,command=mark_watched).pack(side=tk.LEFT,padx=5)
 
-# البحث
+# ---------------- البحث ----------------
 search_frame=tk.Frame(root,bg=bg_color)
 search_frame.pack(pady=5)
 search_var=tk.StringVar()
 search_var.trace("w", search_links)
+tk.Label(search_frame,text="Search by Title",bg=bg_color,fg=fg_color).pack()
 search_entry=tk.Entry(search_frame,textvariable=search_var,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 search_entry.pack()
-search_label=tk.Label(search_frame,text="Search by Title",bg=bg_color,fg=fg_color)
-search_label.pack()
 
-# Treeview
+# ---------------- Treeview ----------------
 columns=("Title","Link","Date","Status")
 tree=ttk.Treeview(root,columns=columns,show="headings",height=18)
 for col in columns:
@@ -223,10 +226,8 @@ tree.column("Date",width=130)
 tree.column("Status",width=100)
 tree.pack(fill=tk.BOTH,expand=True,pady=10)
 
-# تحميل البيانات
+# ---------------- تحميل البيانات ----------------
 links=load_links()
-for i,item in enumerate(links):
-    item.append(None)  # placeholder للصورة
 filtered_links=links[:]
 refresh_tree()
 
