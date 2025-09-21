@@ -1,0 +1,118 @@
+import sys, os
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
+    QPushButton, QListWidget, QListWidgetItem, QLabel
+)
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtCore import Qt
+
+
+class YouTubeApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("YouTube Video Manager")
+        self.resize(900, 650)
+
+        self.links = [
+            {"title": "Python Tutorial", "date": "2025-09-20", "watched": True, "thumb_file": "thumb1.jpg"},
+            {"title": "AI in 2025", "date": "2025-09-18", "watched": False, "thumb_file": "thumb2.jpg"},
+        ]
+
+        layout = QVBoxLayout()
+
+        # ===== شريط البحث =====
+        search_layout = QHBoxLayout()
+        self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("🔍 ابحث عن فيديو ...")
+        search_btn = QPushButton("بحث")
+        search_btn.clicked.connect(self.refresh_list)
+        search_layout.addWidget(self.search_entry)
+        search_layout.addWidget(search_btn)
+
+        # ===== قائمة الفيديوهات =====
+        self.list_widget = QListWidget()
+
+        layout.addLayout(search_layout)
+        layout.addWidget(self.list_widget)
+
+        self.setLayout(layout)
+        self.refresh_list()
+
+    def refresh_list(self):
+        query = self.search_entry.text().lower()
+        self.list_widget.clear()
+
+        for item in self.links:
+            if query in item["title"].lower():
+                # ====== تصميم عنصر مخصص ======
+                widget = QWidget()
+                vbox = QVBoxLayout()
+                vbox.setContentsMargins(15, 15, 15, 15)
+                vbox.setSpacing(10)
+
+                # --- العنوان ---
+                title_label = QLabel(item["title"])
+                title_label.setStyleSheet("""
+                    font-size: 18px; 
+                    font-weight: bold; 
+                    color: #FFD700;
+                """)
+
+                # --- التاريخ ---
+                date_label = QLabel(f"📅 {item['date']}")
+                date_label.setStyleSheet("""
+                    font-size: 14px; 
+                    color: #bbb;
+                """)
+
+                # --- حالة المشاهدة ---
+                if item["watched"]:
+                    status_label = QLabel("✅ تمت المشاهدة")
+                    status_label.setStyleSheet("""
+                        font-size: 15px; 
+                        color: lightgreen; 
+                        font-weight: bold;
+                    """)
+                else:
+                    status_label = QLabel("❌ لم تتم المشاهدة")
+                    status_label.setStyleSheet("""
+                        font-size: 15px; 
+                        color: red; 
+                        font-weight: bold;
+                    """)
+
+                vbox.addWidget(title_label)
+                vbox.addWidget(date_label)
+                vbox.addWidget(status_label)
+                widget.setLayout(vbox)
+
+                # ====== تنسيق الكارد ======
+                widget.setStyleSheet("""
+                    background-color: #2b2b2b;
+                    border-radius: 15px;
+                """)
+
+                # ====== العنصر في القائمة ======
+                list_item = QListWidgetItem(self.list_widget)
+
+                # ضبط حجم العنصر ليكون أكبر
+                list_item.setSizeHint(widget.sizeHint() + QSize(0, 40))
+
+                # صورة مصغرة كبيرة
+                if item.get("thumb_file") and os.path.exists(item["thumb_file"]):
+                    pixmap = QPixmap(item["thumb_file"]).scaled(
+                        220, 150,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
+                    list_item.setIcon(QIcon(pixmap))
+
+                self.list_widget.addItem(list_item)
+                self.list_widget.setItemWidget(list_item, widget)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = YouTubeApp()
+    window.show()
+    sys.exit(app.exec())
