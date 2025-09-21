@@ -1,10 +1,12 @@
 import tkinter as tk
-from tkinter import messagebox
-import webbrowser
-import os
+from tkinter import ttk, messagebox
+from urllib.parse import urlparse, parse_qs
 import re
-from urllib.parse import urlparse
+import requests
+from PIL import Image, ImageTk
+from io import BytesIO
 from datetime import datetime
+import os
 
 FILENAME = "youtube_links.txt"
 
@@ -21,51 +23,59 @@ def sanitize_link(link: str) -> str:
         link = "https://" + link
     return link
 
-def extract_short_title_from_url(url: str) -> str:
-    try:
-        m = re.search(r"v=([^&]+)", url)
-        if not m:
-            m = re.search(r"youtu\.be/([^?&/]+)", url)
-        if not m:
-            m = re.search(r"youtube\.com/embed/([^?&/]+)", url)
-        if m:
-            return f"Video {m.group(1)}"
-        parsed = urlparse(url)
-        path = parsed.path or ""
-        last = path.rstrip("/").split("/")[-1]
-        if last:
-            return last
-        return parsed.netloc or "Untitled"
-    except Exception:
-        return "Untitled"
+def get_video_id(link):
+    parsed = urlparse(link)
+    if "youtu.be" in parsed.netloc:
+        return parsed.path.lstrip("/")
+    if "youtube" in parsed.netloc:
+        qs = parse_qs(parsed.query)
+        if "v" in qs:
+            return qs["v"][0]
+    if re.match(r"^[A-Za-z0-9_-]{11}$", link):
+        return link
+    return None
 
-def format_display(title, link, watched, date):
-    trophy = "🏆 " if watched else ""
-    return f"{trophy}{title}  →  {link}  ({date})"
+def extract_short_title_from_url(url: str) -> str:
+    vid = get_video_id(url)
+    return f"Video {vid}" if vid else "Untitled"
+
+def get_thumbnail(video_id):
+    thumbs = ["maxresdefault.jpg","sddefault.jpg","hqdefault.jpg","mqdefault.jpg","default.jpg"]
+    for t in thumbs:
+        url = f"https://i.ytimg.com/vi/{video_id}/{t}"
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                img = Image.open(BytesIO(r.content)).resize((120, 90))
+                return ImageTk.PhotoImage(img)
+        except:
+            continue
+    return None
+
+def format_status(watched):
+    return "🏆 Watched" if watched else "❌ Not watched"
 
 # ---------------- storage ----------------
 def load_links():
     if os.path.exists(FILENAME):
         with open(FILENAME, "r", encoding="utf-8") as f:
             lines = [line.strip() for line in f.readlines() if line.strip()]
-            links_data = []
+            data = []
             for line in lines:
                 parts = line.split("|")
                 if len(parts) == 4:
                     title, link, watched, date = parts
-                    links_data.append([title.strip(), link.strip(), watched == "1", date.strip()])
-                elif "|" in line:
-                    # old format: title|link
-                    title, link = line.split("|", 1)
+                    data.append([title, link, watched=="1", date])
+                elif len(parts)==2:
+                    title, link = parts
                     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    links_data.append([title.strip(), link.strip(), False, date])
+                    data.append([title, link, False, date])
                 else:
-                    # very old format: link only
                     link = line.strip()
                     title = extract_short_title_from_url(link)
                     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    links_data.append([title, link, False, date])
-            return links_data
+                    data.append([title, link, False, date])
+            return data
     return []
 
 def save_links():
@@ -74,159 +84,150 @@ def save_links():
             f.write(f"{title}|{link}|{1 if watched else 0}|{date}\n")
 
 # ---------------- actions ----------------
-def add_link(title=None, link=None):
-    if title is None:
-        title = title_entry.get().strip()
-    if link is None:
-        link = link_entry.get().strip()
-
+def add_link():
+    title = title_entry.get().strip()
+    link = link_entry.get().strip()
     link = sanitize_link(link)
-    if not (title and link):
-        messagebox.showwarning("Warning", "Please enter both Title and Link (or paste a link).")
+    if not link:
+        messagebox.showwarning("Warning","Please enter a link")
         return
-
+    if not title:
+        title = extract_short_title_from_url(link)
     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    links.append([title, link, False, date])
-    refresh_listbox()
+    vid = get_video_id(link)
+    thumb = get_thumbnail(vid)
+    links.append([title, link, False, date, thumb])
+    refresh_tree()
     save_links()
     title_entry.delete(0, tk.END)
     link_entry.delete(0, tk.END)
 
-def paste_to_entry(event=None):
+def paste_link(event=None):
     try:
-        clip = root.clipboard_get()
+        clip = root.clipboard_get().strip()
+        if clip:
+            link_entry.delete(0, tk.END)
+            link_entry.insert(0, clip)
+            if not title_entry.get().strip():
+                title_entry.delete(0, tk.END)
+                title_entry.insert(0, extract_short_title_from_url(clip))
     except tk.TclError:
-        messagebox.showwarning("Warning", "Clipboard is empty or unavailable.")
-        return "break"
-    clip = clip.strip()
-    if not clip:
-        messagebox.showwarning("Warning", "Clipboard is empty.")
-        return "break"
-    link = sanitize_link(clip)
-    link_entry.delete(0, tk.END)
-    link_entry.insert(0, link)
-    if not title_entry.get().strip():
-        title_entry.delete(0, tk.END)
-        title_entry.insert(0, extract_short_title_from_url(link))
+        pass
     return "break"
 
-def open_link():
-    try:
-        indices = listbox.curselection()
-        if not indices:
-            raise Exception()
-        for i in indices:
-            _, link, _, _ = filtered_links[i]
-            webbrowser.open(link)
-    except Exception:
-        messagebox.showwarning("Warning", "Please select at least one link!")
-
-def delete_link():
-    try:
-        indices = list(listbox.curselection())
-        if not indices:
-            raise Exception()
-        indices.sort(reverse=True)
-        for i in indices:
-            real_index = links.index(filtered_links[i])
-            links.pop(real_index)
-        save_links()
-        refresh_listbox()
-    except Exception:
-        messagebox.showwarning("Warning", "Please select at least one link!")
+def delete_selected():
+    indices = tree.selection()
+    if not indices:
+        messagebox.showwarning("Warning","Select at least one link to delete")
+        return
+    for i in reversed(indices):
+        idx = int(tree.item(i, "tags")[0])
+        links.pop(idx)
+    save_links()
+    refresh_tree()
 
 def mark_watched():
-    try:
-        indices = listbox.curselection()
-        if not indices:
-            raise Exception()
-        for i in indices:
-            real_index = links.index(filtered_links[i])
-            links[real_index][2] = True
-        save_links()
-        refresh_listbox()
-    except Exception:
-        messagebox.showwarning("Warning", "Please select at least one link!")
+    indices = tree.selection()
+    if not indices:
+        messagebox.showwarning("Warning","Select at least one link to mark watched")
+        return
+    for i in indices:
+        idx = int(tree.item(i,"tags")[0])
+        links[idx][2]=True
+    save_links()
+    refresh_tree()
+
+def open_selected():
+    indices = tree.selection()
+    if not indices:
+        messagebox.showwarning("Warning","Select at least one link to watch")
+        return
+    for i in indices:
+        idx = int(tree.item(i,"tags")[0])
+        webbrowser.open(links[idx][1])
 
 def search_links(*args):
-    query = search_var.get().strip().lower()
-    listbox.delete(0, tk.END)
-    global filtered_links
-    if query:
-        filtered_links = [item for item in links if query in item[0].lower()]
-    else:
-        filtered_links = links[:]
-    for t, l, w, d in filtered_links:
-        listbox.insert(tk.END, format_display(t, l, w, d))
+    query = search_var.get().lower()
+    refresh_tree(query)
 
-def refresh_listbox():
-    search_links()
+def refresh_tree(query=""):
+    tree.delete(*tree.get_children())
+    filtered = []
+    for idx, item in enumerate(links):
+        if query in item[0].lower():
+            filtered.append((idx, item))
+    for idx, (title, link, watched, date, thumb) in filtered:
+        tree.insert("", tk.END, values=(title, link, date, format_status(watched)), image=thumb, tags=(str(idx),))
+        # نخزن الصورة عشان Tkinter ما يمسحها
+        if thumb:
+            images.append(thumb)
 
 # ---------------- GUI ----------------
 root = tk.Tk()
 root.title("YouTube Watchlist")
-root.geometry("800x580")
+root.geometry("900x600")
 root.resizable(False, False)
-
-# Dark theme
-bg_color = "#121212"
-fg_color = "#ffffff"
-entry_bg = "#1e1e1e"
-btn_green = "#4CAF50"
-btn_blue = "#2196F3"
-btn_red = "#f44336"
-btn_gray = "#6a6a6a"
-btn_gold = "#FFD700"
-
+bg_color="#121212"
+fg_color="#ffffff"
+entry_bg="#1e1e1e"
+btn_green="#4CAF50"
+btn_blue="#2196F3"
+btn_red="#f44336"
+btn_gray="#6a6a6a"
+btn_gold="#FFD700"
 root.configure(bg=bg_color)
 
-# Title field (center)
-title_frame = tk.Frame(root, bg=bg_color)
-title_frame.pack(pady=6)
-title_label = tk.Label(title_frame, text="Title:", bg=bg_color, fg=fg_color)
-title_label.pack()
-title_entry = tk.Entry(title_frame, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+images=[]
+
+# الحقول
+title_frame=tk.Frame(root,bg=bg_color)
+title_frame.pack(pady=5)
+title_entry=tk.Entry(title_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 title_entry.pack()
-
-# Link field (center)
-link_frame = tk.Frame(root, bg=bg_color)
-link_frame.pack(pady=6)
-link_label = tk.Label(link_frame, text="YouTube Link:", bg=bg_color, fg=fg_color)
-link_label.pack()
-link_entry = tk.Entry(link_frame, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+link_frame=tk.Frame(root,bg=bg_color)
+link_frame.pack(pady=5)
+link_entry=tk.Entry(link_frame,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 link_entry.pack()
+link_entry.bind("<Control-v>", paste_link)
+link_entry.bind("<Control-V>", paste_link)
+title_entry.bind("<Control-v>", paste_link)
+title_entry.bind("<Control-V>", paste_link)
 
-# Buttons row
-btn_frame = tk.Frame(root, bg=bg_color)
+# أزرار
+btn_frame=tk.Frame(root,bg=bg_color)
 btn_frame.pack(pady=10)
-add_button = tk.Button(btn_frame, text="Add", command=add_link, bg=btn_green, fg="white", width=12)
-add_button.pack(side=tk.LEFT, padx=6)
-paste_button = tk.Button(btn_frame, text="Paste", command=paste_to_entry, bg=btn_gray, fg="white", width=12)
-paste_button.pack(side=tk.LEFT, padx=6)
-watch_button = tk.Button(btn_frame, text="Watch", command=open_link, bg=btn_blue, fg="white", width=12)
-watch_button.pack(side=tk.LEFT, padx=6)
-delete_button = tk.Button(btn_frame, text="Delete", command=delete_link, bg=btn_red, fg="white", width=12)
-delete_button.pack(side=tk.LEFT, padx=6)
-mark_button = tk.Button(btn_frame, text="Mark as Watched", command=mark_watched, bg=btn_gold, fg="black", width=15)
-mark_button.pack(side=tk.LEFT, padx=6)
+tk.Button(btn_frame,text="Add",bg=btn_green,fg="white",width=12,command=add_link).pack(side=tk.LEFT,padx=5)
+tk.Button(btn_frame,text="Paste",bg=btn_gray,fg="white",width=12,command=paste_link).pack(side=tk.LEFT,padx=5)
+tk.Button(btn_frame,text="Watch",bg=btn_blue,fg="white",width=12,command=open_selected).pack(side=tk.LEFT,padx=5)
+tk.Button(btn_frame,text="Delete",bg=btn_red,fg="white",width=12,command=delete_selected).pack(side=tk.LEFT,padx=5)
+tk.Button(btn_frame,text="Mark as Watched",bg=btn_gold,fg="black",width=15,command=mark_watched).pack(side=tk.LEFT,padx=5)
 
-# Search bar
-search_frame = tk.Frame(root, bg=bg_color)
-search_frame.pack(pady=6)
-search_label = tk.Label(search_frame, text="Search by Title:", bg=bg_color, fg=fg_color)
-search_label.pack()
-search_var = tk.StringVar()
+# البحث
+search_frame=tk.Frame(root,bg=bg_color)
+search_frame.pack(pady=5)
+search_var=tk.StringVar()
 search_var.trace("w", search_links)
-search_entry = tk.Entry(search_frame, textvariable=search_var, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+search_entry=tk.Entry(search_frame,textvariable=search_var,width=50,bg=entry_bg,fg=fg_color,insertbackground=fg_color,justify="center")
 search_entry.pack()
+search_label=tk.Label(search_frame,text="Search by Title",bg=bg_color,fg=fg_color)
+search_label.pack()
 
-# Listbox
-listbox = tk.Listbox(root, width=110, height=18, bg=entry_bg, fg=fg_color, selectmode=tk.EXTENDED, selectbackground="#333")
-listbox.pack(pady=(6,12))
+# Treeview
+columns=("Title","Link","Date","Status")
+tree=ttk.Treeview(root,columns=columns,show="headings",height=18)
+for col in columns:
+    tree.heading(col,text=col)
+tree.column("Title",width=250)
+tree.column("Link",width=300)
+tree.column("Date",width=130)
+tree.column("Status",width=100)
+tree.pack(fill=tk.BOTH,expand=True,pady=10)
 
-# Load existing links
-links = load_links()
-filtered_links = links[:]
-refresh_listbox()
+# تحميل البيانات
+links=load_links()
+for i,item in enumerate(links):
+    item.append(None)  # placeholder للصورة
+filtered_links=links[:]
+refresh_tree()
 
 root.mainloop()
