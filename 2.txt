@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QListWidget, QListWidgetItem, QMessageBox, QInputDialog
+    QPushButton, QListWidget, QListWidgetItem, QMessageBox
 )
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtCore import Qt
@@ -49,7 +49,8 @@ def get_thumbnail(video_id):
             if r.status_code == 200:
                 img = QPixmap()
                 img.loadFromData(r.content)
-                return img.scaled(120, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                # تكبير الصورة بشكل مناسب
+                return img.scaled(240, 180, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         except:
             continue
     return None
@@ -59,7 +60,7 @@ class YouTubeWatchlist(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("YouTube Watchlist")
-        self.setGeometry(100, 100, 900, 600)
+        self.setGeometry(100, 100, 950, 600)
         self.setStyleSheet("background-color: #121212; color: white;")
         self.links = []
         self.load_links()
