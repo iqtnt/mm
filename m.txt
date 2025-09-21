@@ -1,0 +1,196 @@
+import tkinter as tk
+from tkinter import messagebox
+import webbrowser
+import os
+import re
+from urllib.parse import urlparse
+
+FILENAME = "youtube_links.txt"
+
+# ---------------- helpers ----------------
+def sanitize_link(link: str) -> str:
+    link = link.strip()
+    if not link:
+        return ""
+    if link.startswith("www."):
+        link = "https://" + link
+    if link.startswith("youtu.be/") or link.startswith("youtube.com/") and not link.startswith("http"):
+        link = "https://" + link
+    if not link.startswith("http"):
+        link = "https://" + link
+    return link
+
+def extract_short_title_from_url(url: str) -> str:
+    try:
+        m = re.search(r"v=([^&]+)", url)
+        if not m:
+            m = re.search(r"youtu\.be/([^?&/]+)", url)
+        if not m:
+            m = re.search(r"youtube\.com/embed/([^?&/]+)", url)
+        if m:
+            return f"Video {m.group(1)}"
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        last = path.rstrip("/").split("/")[-1]
+        if last:
+            return last
+        return parsed.netloc or "Untitled"
+    except Exception:
+        return "Untitled"
+
+# ---------------- storage ----------------
+def load_links():
+    if os.path.exists(FILENAME):
+        with open(FILENAME, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f.readlines() if line.strip()]
+            links_data = []
+            for line in lines:
+                if "|" in line:
+                    title, link = line.split("|", 1)
+                    links_data.append((title.strip(), link.strip()))
+                else:
+                    link = line.strip()
+                    title = extract_short_title_from_url(link)
+                    links_data.append((title, link))
+            return links_data
+    return []
+
+def save_links():
+    with open(FILENAME, "w", encoding="utf-8") as f:
+        for title, link in links:
+            f.write(f"{title}|{link}\n")
+
+# ---------------- actions ----------------
+def add_link(title=None, link=None):
+    if title is None:
+        title = title_entry.get().strip()
+    if link is None:
+        link = link_entry.get().strip()
+
+    link = sanitize_link(link)
+    if not (title and link):
+        messagebox.showwarning("Warning", "Please enter both Title and Link (or paste a link).")
+        return
+
+    links.append((title, link))
+    refresh_listbox()
+    save_links()
+    title_entry.delete(0, tk.END)
+    link_entry.delete(0, tk.END)
+
+def paste_to_entry(event=None):
+    try:
+        clip = root.clipboard_get()
+    except tk.TclError:
+        messagebox.showwarning("Warning", "Clipboard is empty or unavailable.")
+        return "break"
+    clip = clip.strip()
+    if not clip:
+        messagebox.showwarning("Warning", "Clipboard is empty.")
+        return "break"
+    link = sanitize_link(clip)
+    link_entry.delete(0, tk.END)
+    link_entry.insert(0, link)
+    if not title_entry.get().strip():
+        title_entry.delete(0, tk.END)
+        title_entry.insert(0, extract_short_title_from_url(link))
+    return "break"
+
+def open_link():
+    try:
+        index = listbox.curselection()[0]
+        _, link = filtered_links[index]
+        webbrowser.open(link)
+    except Exception:
+        messagebox.showwarning("Warning", "Please select a link first!")
+
+def delete_link():
+    try:
+        index = listbox.curselection()[0]
+        real_index = links.index(filtered_links[index])
+        listbox.delete(index)
+        links.pop(real_index)
+        save_links()
+        refresh_listbox()
+    except Exception:
+        messagebox.showwarning("Warning", "Please select a link to delete!")
+
+def search_links(*args):
+    query = search_var.get().strip().lower()
+    listbox.delete(0, tk.END)
+    global filtered_links
+    if query:
+        filtered_links = [item for item in links if query in item[0].lower()]
+    else:
+        filtered_links = links[:]
+    for t, l in filtered_links:
+        listbox.insert(tk.END, f"{t}  →  {l}")
+
+def refresh_listbox():
+    search_links()
+
+# ---------------- GUI ----------------
+root = tk.Tk()
+root.title("YouTube Watchlist")
+root.geometry("700x540")
+root.resizable(False, False)
+
+# Dark theme
+bg_color = "#121212"
+fg_color = "#ffffff"
+entry_bg = "#1e1e1e"
+btn_green = "#4CAF50"
+btn_blue = "#2196F3"
+btn_red = "#f44336"
+btn_gray = "#6a6a6a"
+
+root.configure(bg=bg_color)
+
+# Title field (center)
+title_frame = tk.Frame(root, bg=bg_color)
+title_frame.pack(pady=8)
+title_label = tk.Label(title_frame, text="Title:", bg=bg_color, fg=fg_color)
+title_label.pack()
+title_entry = tk.Entry(title_frame, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+title_entry.pack()
+
+# Link field (center)
+link_frame = tk.Frame(root, bg=bg_color)
+link_frame.pack(pady=8)
+link_label = tk.Label(link_frame, text="YouTube Link:", bg=bg_color, fg=fg_color)
+link_label.pack()
+link_entry = tk.Entry(link_frame, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+link_entry.pack()
+
+# Buttons row
+btn_frame = tk.Frame(root, bg=bg_color)
+btn_frame.pack(pady=12)
+add_button = tk.Button(btn_frame, text="Add", command=add_link, bg=btn_green, fg="white", width=12)
+add_button.pack(side=tk.LEFT, padx=6)
+paste_button = tk.Button(btn_frame, text="Paste", command=paste_to_entry, bg=btn_gray, fg="white", width=12)
+paste_button.pack(side=tk.LEFT, padx=6)
+watch_button = tk.Button(btn_frame, text="Watch", command=open_link, bg=btn_blue, fg="white", width=12)
+watch_button.pack(side=tk.LEFT, padx=6)
+delete_button = tk.Button(btn_frame, text="Delete", command=delete_link, bg=btn_red, fg="white", width=12)
+delete_button.pack(side=tk.LEFT, padx=6)
+
+# Search bar
+search_frame = tk.Frame(root, bg=bg_color)
+search_frame.pack(pady=8)
+search_label = tk.Label(search_frame, text="Search by Title:", bg=bg_color, fg=fg_color)
+search_label.pack()
+search_var = tk.StringVar()
+search_var.trace("w", search_links)
+search_entry = tk.Entry(search_frame, textvariable=search_var, width=50, bg=entry_bg, fg=fg_color, insertbackground=fg_color, justify="center")
+search_entry.pack()
+
+# Listbox
+listbox = tk.Listbox(root, width=100, height=15, bg=entry_bg, fg=fg_color, selectbackground="#333")
+listbox.pack(pady=(6,12))
+
+# Load existing links
+links = load_links()
+filtered_links = links[:]
+refresh_listbox()
+
+root.mainloop()
